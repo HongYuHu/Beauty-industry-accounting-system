@@ -338,36 +338,60 @@ function addExpenseCategory(data) {
 }
 
 // ────────────────────────────────────────────────────────────
-// 儀表板統計
+// 儀表板統計（優化版：只讀表 3 次，記憶體內計算）
 // ────────────────────────────────────────────────────────────
 function getDashboardStats(params) {
   const year  = String(params.year  || new Date().getFullYear());
   const month = String(params.month || (new Date().getMonth() + 1));
 
-  const svcRows = (getServiceRecords({ year, month }).data || []);
-  const expRows = (getExpenseRecords({ year, month }).data || []);
+  // ── 一次讀取全部服務紀錄 ──────────────────────────────────
+  function parseSheet(sheetName) {
+    const sheet = getSheet(sheetName);
+    if (!sheet) return [];
+    const raw = sheet.getDataRange().getValues();
+    if (raw.length <= 1) return [];
+    const headers = raw[0];
+    return raw.slice(1).map(row => {
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = row[i]; });
+      return obj;
+    });
+  }
 
-  const totalRevenue  = svcRows.reduce((s, r) => s + (Number(r['金額']) || 0), 0);
-  const totalExpenses = expRows.reduce((s, r) => s + (Number(r['金額']) || 0), 0);
-  const totalClients  = svcRows.length;
-  const newClients    = svcRows.filter(r => r['客戶類型'] === '新客').length;
-  const returningClients = svcRows.filter(r => r['客戶類型'] === '回頭客').length;
+  const allSvc = parseSheet(SHEETS.SERVICE_RECORDS);
+  const allExp = parseSheet(SHEETS.EXPENSE_RECORDS);
 
-  // 全年每月營收
-  const monthlyRevenue = Array.from({ length: 12 }, (_, m) => {
-    const rows = (getServiceRecords({ year, month: String(m + 1) }).data || []);
-    return rows.reduce((s, r) => s + (Number(r['金額']) || 0), 0);
-  });
+  // 篩選當月
+  function filterByYearMonth(rows, dateKey, y, m) {
+    return rows.filter(r => {
+      if (!r[dateKey]) return false;
+      const d = new Date(r[dateKey]);
+      return String(d.getFullYear()) === y && String(d.getMonth() + 1) === m;
+    });
+  }
 
-  // 全年每月支出
-  const monthlyExpenses = Array.from({ length: 12 }, (_, m) => {
-    const rows = (getExpenseRecords({ year, month: String(m + 1) }).data || []);
-    return rows.reduce((s, r) => s + (Number(r['金額']) || 0), 0);
-  });
+  const curSvc = filterByYearMonth(allSvc, '日期', year, month);
+  const curExp = filterByYearMonth(allExp, '日期', year, month);
+
+  const totalRevenue     = curSvc.reduce((s, r) => s + (Number(r['金額']) || 0), 0);
+  const totalExpenses    = curExp.reduce((s, r) => s + (Number(r['金額']) || 0), 0);
+  const totalClients     = curSvc.length;
+  const newClients       = curSvc.filter(r => r['客戶類型'] === '新客').length;
+  const returningClients = curSvc.filter(r => r['客戶類型'] === '回頭客').length;
+
+  // 全年每月（記憶體內過濾，不再重複讀表）
+  const monthlyRevenue  = Array.from({ length: 12 }, (_, m) =>
+    filterByYearMonth(allSvc, '日期', year, String(m + 1))
+      .reduce((s, r) => s + (Number(r['金額']) || 0), 0)
+  );
+  const monthlyExpenses = Array.from({ length: 12 }, (_, m) =>
+    filterByYearMonth(allExp, '日期', year, String(m + 1))
+      .reduce((s, r) => s + (Number(r['金額']) || 0), 0)
+  );
 
   // 服務項目分布（本月）
   const serviceBreakdown = {};
-  svcRows.forEach(r => {
+  curSvc.forEach(r => {
     const t = r['服務項目'] || '其他';
     if (!serviceBreakdown[t]) serviceBreakdown[t] = { count: 0, revenue: 0 };
     serviceBreakdown[t].count++;
@@ -376,12 +400,13 @@ function getDashboardStats(params) {
 
   // 低庫存警示
   const invData = getSheetData(SHEETS.INVENTORY).data || [];
-  const lowInventory = invData.filter(i =>
-    Number(i['目前庫存']) <= Number(i['安全庫存量'])
-  ).slice(0, 5);
+  const lowInventory = invData
+    .filter(i => Number(i['目前庫存']) <= Number(i['安全庫存量']))
+    .slice(0, 5);
 
   return {
-    currentMonth: { totalRevenue, totalExpenses, netProfit: totalRevenue - totalExpenses,
+    currentMonth: { totalRevenue, totalExpenses,
+                    netProfit: totalRevenue - totalExpenses,
                     totalClients, newClients, returningClients },
     monthlyRevenue,
     monthlyExpenses,
