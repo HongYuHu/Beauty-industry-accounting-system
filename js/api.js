@@ -3,10 +3,8 @@
    ============================================================ */
 
 const API = {
-  // GAS 部署後的網址，由使用者在「設定」頁輸入並存入 localStorage
-  get url() {
-    return localStorage.getItem('gasUrl') || '';
-  },
+  // 固定的 GAS 部署網址
+  url: 'https://script.google.com/macros/s/AKfycbwVe5fkhC6Lpcz4vTsgdyW8vyiEdMQvcHDsu_0VNWMHBA0pbHKPuZYJR66Pnnmzb08/exec',
 
   /** GET 請求 */
   async get(action, params = {}) {
@@ -45,9 +43,10 @@ const API = {
   getDashboardStats: (year, month) => API.get('getDashboardStats', { year, month }),
 
   // ── 服務紀錄 ─────────────────────────────────────────────
-  getServiceRecords:  (year, month) => API.get('getServiceRecords', { year, month }),
-  addServiceRecord:   (data)        => API.post('addServiceRecord', data),
-  deleteServiceRecord:(id)          => API.post('deleteServiceRecord', { id }),
+  getServiceRecords:   (year, month) => API.get('getServiceRecords', { year, month }),
+  addServiceRecord:    (data)        => API.post('addServiceRecord', data),
+  updateServiceRecord: (data)        => API.post('updateServiceRecord', data),
+  deleteServiceRecord: (id)          => API.post('deleteServiceRecord', { id }),
 
   // ── 服務項目（自定義） ────────────────────────────────────
   getServiceTypes:   ()     => API.get('getServiceTypes'),
@@ -65,6 +64,7 @@ const API = {
   // ── 支出 ─────────────────────────────────────────────────
   getExpenseRecords:    (year, month) => API.get('getExpenseRecords', { year, month }),
   addExpense:           (data)        => API.post('addExpense', data),
+  updateExpense:        (data)        => API.post('updateExpense', data),
   deleteExpense:        (id)          => API.post('deleteExpense', { id }),
 
   // ── 支出項目（自定義） ────────────────────────────────────

@@ -67,6 +67,7 @@ function doPost(e) {
   try {
     switch (action) {
       case 'addServiceRecord':      result = addServiceRecord(data); break;
+      case 'updateServiceRecord':   result = updateServiceRecord(data); break;
       case 'deleteServiceRecord':   result = deleteRow(SHEETS.SERVICE_RECORDS, data.id); break;
       case 'addServiceType':        result = addServiceType(data); break;
       case 'deleteServiceType':     result = deleteRow(SHEETS.SERVICE_TYPES, data.id); break;
@@ -75,6 +76,7 @@ function doPost(e) {
       case 'updateInventoryStock':  result = updateInventoryStock(data); break;
       case 'deleteInventoryItem':   result = deleteRow(SHEETS.INVENTORY, data.id); break;
       case 'addExpense':            result = addExpense(data); break;
+      case 'updateExpense':         result = updateExpense(data); break;
       case 'deleteExpense':         result = deleteRow(SHEETS.EXPENSE_RECORDS, data.id); break;
       case 'addExpenseCategory':    result = addExpenseCategory(data); break;
       case 'deleteExpenseCategory': result = deleteRow(SHEETS.EXPENSE_CATEGORIES, data.id); break;
@@ -217,6 +219,23 @@ function addServiceRecord(data) {
   return { success: true, id };
 }
 
+function updateServiceRecord(data) {
+  const sheet = getSheet(SHEETS.SERVICE_RECORDS);
+  if (!sheet) return { error: '找不到工作表' };
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(data.id)) {
+      sheet.getRange(i + 1, 2, 1, 7).setValues([[
+        data.date, data.clientName, data.clientPhone || '',
+        data.serviceType, Number(data.amount), data.notes || '', data.clientType || '新客'
+      ]]);
+      upsertClient(data.clientName, data.clientPhone || '', data.date);
+      return { success: true };
+    }
+  }
+  return { error: '找不到紀錄' };
+}
+
 // ────────────────────────────────────────────────────────────
 // 客戶資料（自動維護）
 // ────────────────────────────────────────────────────────────
@@ -327,6 +346,21 @@ function addExpense(data) {
   const id = uid();
   sheet.appendRow([id, data.date, data.category, Number(data.amount), data.notes || '']);
   return { success: true, id };
+}
+
+function updateExpense(data) {
+  const sheet = getSheet(SHEETS.EXPENSE_RECORDS);
+  if (!sheet) return { error: '找不到工作表' };
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(data.id)) {
+      sheet.getRange(i + 1, 2, 1, 4).setValues([[
+        data.date, data.category, Number(data.amount), data.notes || ''
+      ]]);
+      return { success: true };
+    }
+  }
+  return { error: '找不到紀錄' };
 }
 
 function addExpenseCategory(data) {

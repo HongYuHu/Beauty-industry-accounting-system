@@ -15,60 +15,9 @@
 <body>
 
 <!-- ════════════════════════════════════════════════════════
-     首次設定畫面（尚未填 GAS URL 時顯示）
-═════════════════════════════════════════════════════════ -->
-<div id="setupScreen" class="setup-screen">
-  <div class="setup-logo">💅</div>
-  <div class="setup-title">美業帳本</div>
-  <div class="setup-desc">
-    第一次使用，請先完成以下設定<br>
-    整個流程約 5 分鐘，之後就能直接使用！
-  </div>
-
-  <div class="setup-steps">
-    <div class="setup-step">
-      <div class="step-num">1</div>
-      <div class="step-text">
-        前往 <strong>Google Sheets</strong> 建立一個新的空白試算表，
-        複製網址列中的 <strong>試算表 ID</strong>（/d/ 和 /edit 之間的一長串）
-      </div>
-    </div>
-    <div class="setup-step">
-      <div class="step-num">2</div>
-      <div class="step-text">
-        前往 <strong>Google Apps Script</strong>（script.google.com），
-        新增專案，將 <code>gas/Code.gs</code> 的內容貼入，並填入試算表 ID。
-      </div>
-    </div>
-    <div class="setup-step">
-      <div class="step-num">3</div>
-      <div class="step-text">
-        點選「部署 → 新增部署項目 → 網頁應用程式」。<br>
-        執行身分：<strong>我自己</strong>，存取對象：<strong>任何人</strong>，完成後複製部署網址。
-      </div>
-    </div>
-    <div class="setup-step">
-      <div class="step-num">4</div>
-      <div class="step-text">將部署網址貼到下方，按「開始使用」即完成！</div>
-    </div>
-  </div>
-
-  <div class="setup-input-wrap">
-    <div class="form-group">
-      <label class="form-label">GAS 部署網址</label>
-      <input id="gasUrlInput" class="form-control" type="url"
-        placeholder="https://script.google.com/macros/s/...">
-    </div>
-    <button class="btn btn-primary" style="width:100%;padding:14px;" onclick="saveGasUrl()">
-      ✨ 開始使用
-    </button>
-  </div>
-</div>
-
-<!-- ════════════════════════════════════════════════════════
      主 App 框架
 ═════════════════════════════════════════════════════════ -->
-<div id="appShell" style="display:none">
+<div id="appShell">
 
   <!-- Header -->
   <header class="app-header">
@@ -190,16 +139,6 @@
          設定
     ──────────────────────────────────────────────────── -->
     <section id="view-settings" class="view">
-
-      <!-- GAS 連線設定 -->
-      <div class="card">
-        <div class="card-header"><span class="card-title">🔗 API 連線</span></div>
-        <div class="form-group">
-          <label class="form-label">GAS 部署網址</label>
-          <input id="gasUrlInput" class="form-control" type="url" placeholder="https://script.google.com/macros/s/...">
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="saveGasUrl()">儲存並重新初始化</button>
-      </div>
 
       <!-- 服務項目 -->
       <div class="card">

@@ -195,8 +195,38 @@ function renderServiceList() {
         <div class="item-amount">${fmt.money(r['金額'])}</div>
         <div class="item-date">${fmt.date(r['日期'])}</div>
       </div>
+      <button class="btn-icon gray btn" onclick="showEditServiceModal('${r['ID']}')" title="修改">✎</button>
       <button class="btn-icon red btn" onclick="deleteServiceRecord('${r['ID']}')" title="刪除">×</button>
     </div>`).join('');
+}
+
+function showEditServiceModal(id) {
+  const r = state.serviceRecords.find(x => String(x['ID']) === String(id));
+  if (!r) return;
+
+  const sel = document.getElementById('svcType');
+  sel.innerHTML = state.serviceTypes.length
+    ? state.serviceTypes.map(t =>
+        `<option value="${t['名稱']}" data-price="${t['預設價格']}">${t['名稱']} (預設 ${fmt.money(t['預設價格'])})</option>`
+      ).join('')
+    : '<option value="">請先到「設定」新增服務項目</option>';
+
+  sel.onchange = () => {
+    const opt = sel.selectedOptions[0];
+    if (opt?.dataset.price) document.getElementById('svcAmount').value = opt.dataset.price;
+  };
+
+  document.getElementById('svcDate').value        = r['日期'];
+  document.getElementById('svcClientName').value  = r['客戶姓名'];
+  document.getElementById('svcClientPhone').value = r['客戶電話'] || '';
+  document.getElementById('svcType').value        = r['服務項目'];
+  document.getElementById('svcAmount').value      = r['金額'];
+  document.getElementById('svcNotes').value       = r['備註'] || '';
+  document.getElementById('svcClientType').value  = r['客戶類型'] || '新客';
+  
+  document.getElementById('modalAddService').dataset.editId = id;
+  document.querySelector('#modalAddService .modal-title').textContent = '📝 修改服務紀錄';
+  openModal('modalAddService');
 }
 
 function showAddServiceModal() {
@@ -217,8 +247,11 @@ function showAddServiceModal() {
   document.getElementById('svcDate').value        = todayVal();
   document.getElementById('svcClientName').value  = '';
   document.getElementById('svcClientPhone').value = '';
-  document.getElementById('svcNotes').value        = '';
+  document.getElementById('svcNotes').value       = '';
   document.getElementById('svcClientType').value  = '新客';
+  
+  document.getElementById('modalAddService').dataset.editId = '';
+  document.querySelector('#modalAddService .modal-title').textContent = '💆 新增服務紀錄';
   openModal('modalAddService');
 }
 
@@ -250,29 +283,57 @@ async function submitAddService() {
   if (!data.serviceType) { toast('請選擇服務項目', 'error'); return; }
   if (!data.amount)      { toast('請填寫金額', 'error'); return; }
 
-  // ★ Optimistic：立刻更新畫面
-  const tid = tempId();
-  state.serviceRecords.push({
-    'ID': tid, '日期': data.date, '客戶姓名': data.clientName,
-    '客戶電話': data.clientPhone, '服務項目': data.serviceType,
-    '金額': Number(data.amount), '備註': data.notes, '客戶類型': data.clientType,
-  });
-  closeModal('modalAddService');
-  renderServiceList();
-  toast('服務紀錄已新增！', 'success');
+  const editId = document.getElementById('modalAddService').dataset.editId;
 
-  // ★ 背景同步
-  try {
-    const res = await API.addServiceRecord(data);
-    // 把暫時 ID 換成真實 ID
-    const idx = state.serviceRecords.findIndex(r => r['ID'] === tid);
-    if (idx !== -1) state.serviceRecords[idx]['ID'] = res.id;
-    bgRefreshStats();
-  } catch (e) {
-    // 失敗：回滾
-    state.serviceRecords = state.serviceRecords.filter(r => r['ID'] !== tid);
+  if (editId) {
+    data.id = editId;
+    const rIdx = state.serviceRecords.findIndex(r => String(r['ID']) === editId);
+    if (rIdx === -1) return;
+    const backup = { ...state.serviceRecords[rIdx] };
+    
+    state.serviceRecords[rIdx] = {
+      ...state.serviceRecords[rIdx],
+      '日期': data.date, '客戶姓名': data.clientName,
+      '客戶電話': data.clientPhone, '服務項目': data.serviceType,
+      '金額': Number(data.amount), '備註': data.notes, '客戶類型': data.clientType,
+    };
+    closeModal('modalAddService');
     renderServiceList();
-    toast('同步失敗，已回滾：' + e.message, 'error');
+    toast('服務紀錄已修改！', 'success');
+    
+    try {
+      await API.updateServiceRecord(data);
+      bgRefreshStats();
+    } catch (e) {
+      state.serviceRecords[rIdx] = backup;
+      renderServiceList();
+      toast('同步失敗，已回滾：' + e.message, 'error');
+    }
+  } else {
+    // ★ Optimistic：立刻更新畫面
+    const tid = tempId();
+    state.serviceRecords.push({
+      'ID': tid, '日期': data.date, '客戶姓名': data.clientName,
+      '客戶電話': data.clientPhone, '服務項目': data.serviceType,
+      '金額': Number(data.amount), '備註': data.notes, '客戶類型': data.clientType,
+    });
+    closeModal('modalAddService');
+    renderServiceList();
+    toast('服務紀錄已新增！', 'success');
+
+    // ★ 背景同步
+    try {
+      const res = await API.addServiceRecord(data);
+      // 把暫時 ID 換成真實 ID
+      const idx = state.serviceRecords.findIndex(r => r['ID'] === tid);
+      if (idx !== -1) state.serviceRecords[idx]['ID'] = res.id;
+      bgRefreshStats();
+    } catch (e) {
+      // 失敗：回滾
+      state.serviceRecords = state.serviceRecords.filter(r => r['ID'] !== tid);
+      renderServiceList();
+      toast('同步失敗，已回滾：' + e.message, 'error');
+    }
   }
 }
 
@@ -471,8 +532,30 @@ function renderExpenseList() {
         <div class="item-amount" style="color:var(--amber)">${fmt.money(r['金額'])}</div>
         <div class="item-date">${fmt.date(r['日期'])}</div>
       </div>
+      <button class="btn-icon gray btn" onclick="showEditExpenseModal('${r['ID']}')" title="修改">✎</button>
       <button class="btn-icon red btn" onclick="deleteExpense('${r['ID']}')" title="刪除">×</button>
     </div>`).join('');
+}
+
+function showEditExpenseModal(id) {
+  const r = state.expenseRecords.find(x => String(x['ID']) === String(id));
+  if (!r) return;
+
+  const sel = document.getElementById('expCategory');
+  sel.innerHTML = state.expenseCategories.length
+    ? state.expenseCategories.map(c =>
+        `<option value="${c['名稱']}">${c['名稱']} (${c['類型']})</option>`
+      ).join('')
+    : '<option value="">請先到「設定」新增支出項目</option>';
+
+  document.getElementById('expDate').value     = r['日期'];
+  document.getElementById('expCategory').value = r['支出項目'];
+  document.getElementById('expAmount').value   = r['金額'];
+  document.getElementById('expNotes').value    = r['備註'] || '';
+
+  document.getElementById('modalAddExpense').dataset.editId = id;
+  document.querySelector('#modalAddExpense .modal-title').textContent = '📝 修改支出';
+  openModal('modalAddExpense');
 }
 
 function showAddExpenseModal() {
@@ -486,6 +569,9 @@ function showAddExpenseModal() {
   document.getElementById('expDate').value   = todayVal();
   document.getElementById('expAmount').value = '';
   document.getElementById('expNotes').value  = '';
+  
+  document.getElementById('modalAddExpense').dataset.editId = '';
+  document.querySelector('#modalAddExpense .modal-title').textContent = '💸 新增支出';
   openModal('modalAddExpense');
 }
 
@@ -499,25 +585,52 @@ async function submitAddExpense() {
   if (!data.category) { toast('請選擇支出項目', 'error'); return; }
   if (!data.amount)   { toast('請填寫金額', 'error'); return; }
 
-  // ★ Optimistic
-  const tid = tempId();
-  state.expenseRecords.push({
-    'ID': tid, '日期': data.date, '支出項目': data.category,
-    '金額': Number(data.amount), '備註': data.notes,
-  });
-  closeModal('modalAddExpense');
-  renderExpenseList();
-  toast('支出已記錄！', 'success');
+  const editId = document.getElementById('modalAddExpense').dataset.editId;
 
-  try {
-    const res = await API.addExpense(data);
-    const idx = state.expenseRecords.findIndex(r => r['ID'] === tid);
-    if (idx !== -1) state.expenseRecords[idx]['ID'] = res.id;
-    bgRefreshStats();
-  } catch (e) {
-    state.expenseRecords = state.expenseRecords.filter(r => r['ID'] !== tid);
+  if (editId) {
+    data.id = editId;
+    const rIdx = state.expenseRecords.findIndex(r => String(r['ID']) === editId);
+    if (rIdx === -1) return;
+    const backup = { ...state.expenseRecords[rIdx] };
+
+    state.expenseRecords[rIdx] = {
+      ...state.expenseRecords[rIdx],
+      '日期': data.date, '支出項目': data.category,
+      '金額': Number(data.amount), '備註': data.notes,
+    };
+    closeModal('modalAddExpense');
     renderExpenseList();
-    toast('同步失敗，已回滾：' + e.message, 'error');
+    toast('支出已修改！', 'success');
+
+    try {
+      await API.updateExpense(data);
+      bgRefreshStats();
+    } catch (e) {
+      state.expenseRecords[rIdx] = backup;
+      renderExpenseList();
+      toast('同步失敗，已回滾：' + e.message, 'error');
+    }
+  } else {
+    // ★ Optimistic
+    const tid = tempId();
+    state.expenseRecords.push({
+      'ID': tid, '日期': data.date, '支出項目': data.category,
+      '金額': Number(data.amount), '備註': data.notes,
+    });
+    closeModal('modalAddExpense');
+    renderExpenseList();
+    toast('支出已記錄！', 'success');
+
+    try {
+      const res = await API.addExpense(data);
+      const idx = state.expenseRecords.findIndex(r => r['ID'] === tid);
+      if (idx !== -1) state.expenseRecords[idx]['ID'] = res.id;
+      bgRefreshStats();
+    } catch (e) {
+      state.expenseRecords = state.expenseRecords.filter(r => r['ID'] !== tid);
+      renderExpenseList();
+      toast('同步失敗，已回滾：' + e.message, 'error');
+    }
   }
 }
 
@@ -543,7 +656,6 @@ async function deleteExpense(id) {
 // 設定（Optimistic UI）
 // ════════════════════════════════════════════════════════════
 function renderSettings() {
-  document.getElementById('gasUrlInput').value = API.url;
   renderServiceTypes();
   renderExpenseCategories();
 }
@@ -674,25 +786,6 @@ async function deleteExpenseCategory(id) {
   }
 }
 
-// ── GAS URL ───────────────────────────────────────────────────
-async function saveGasUrl() {
-  const url = document.getElementById('gasUrlInput').value.trim();
-  if (!url) { toast('請填寫 GAS 網址', 'error'); return; }
-  localStorage.setItem('gasUrl', url);
-  toast('網址已儲存！正在初始化…', 'success');
-  loading(true);
-  try {
-    await API.init();
-    toast('試算表初始化完成！', 'success');
-    await loadAll();
-    document.getElementById('setupScreen').style.display = 'none';
-    document.getElementById('appShell').style.display    = 'block';
-    showView('dashboard');
-  } catch (e) {
-    toast('連線失敗：' + e.message, 'error');
-  } finally { loading(false); }
-}
-
 // ── Modal helpers ────────────────────────────────────────────
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -710,15 +803,6 @@ function handleApiError(e) {
 // ════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
   initMonthPicker();
-
-  if (!API.url) {
-    document.getElementById('setupScreen').style.display = 'flex';
-    document.getElementById('appShell').style.display    = 'none';
-    return;
-  }
-
-  document.getElementById('setupScreen').style.display = 'none';
-  document.getElementById('appShell').style.display    = 'block';
 
   loading(true);
   try {
