@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="美業帳本">
+  <meta name="theme-color" content="#e91e8c">
+  <title>美業帳本</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════
+     首次設定畫面（尚未填 GAS URL 時顯示）
+═════════════════════════════════════════════════════════ -->
+<div id="setupScreen" class="setup-screen">
+  <div class="setup-logo">💅</div>
+  <div class="setup-title">美業帳本</div>
+  <div class="setup-desc">
+    第一次使用，請先完成以下設定<br>
+    整個流程約 5 分鐘，之後就能直接使用！
+  </div>
+
+  <div class="setup-steps">
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div class="step-text">
+        前往 <strong>Google Sheets</strong> 建立一個新的空白試算表，
+        複製網址列中的 <strong>試算表 ID</strong>（/d/ 和 /edit 之間的一長串）
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div class="step-text">
+        前往 <strong>Google Apps Script</strong>（script.google.com），
+        新增專案，將 <code>gas/Code.gs</code> 的內容貼入，並填入試算表 ID。
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div class="step-text">
+        點選「部署 → 新增部署項目 → 網頁應用程式」。<br>
+        執行身分：<strong>我自己</strong>，存取對象：<strong>任何人</strong>，完成後複製部署網址。
+      </div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">4</div>
+      <div class="step-text">將部署網址貼到下方，按「開始使用」即完成！</div>
+    </div>
+  </div>
+
+  <div class="setup-input-wrap">
+    <div class="form-group">
+      <label class="form-label">GAS 部署網址</label>
+      <input id="gasUrlInput" class="form-control" type="url"
+        placeholder="https://script.google.com/macros/s/...">
+    </div>
+    <button class="btn btn-primary" style="width:100%;padding:14px;" onclick="saveGasUrl()">
+      ✨ 開始使用
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════
+     主 App 框架
+═════════════════════════════════════════════════════════ -->
+<div id="appShell" style="display:none">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo"><span>💅</span> 美業帳本</div>
+    <div class="header-month-selector">
+      <select id="selYear"></select> 年
+      <select id="selMonth">
+        <option value="1">01</option><option value="2">02</option>
+        <option value="3">03</option><option value="4">04</option>
+        <option value="5">05</option><option value="6">06</option>
+        <option value="7">07</option><option value="8">08</option>
+        <option value="9">09</option><option value="10">10</option>
+        <option value="11">11</option><option value="12">12</option>
+      </select> 月
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="app-main">
+
+    <!-- ────────────────────────────────────────────────────
+         儀表板
+    ──────────────────────────────────────────────────── -->
+    <section id="view-dashboard" class="view active">
+
+      <div class="stats-grid">
+        <div class="stat-card revenue">
+          <div class="stat-label">本月營收</div>
+          <div class="stat-value revenue" id="statRevenue">$0</div>
+          <div class="stat-sub" id="statNew">新客 0 人</div>
+        </div>
+        <div class="stat-card clients">
+          <div class="stat-label">本月客數</div>
+          <div class="stat-value" id="statClients">0</div>
+          <div class="stat-sub" id="statReturn">回頭客 0 人</div>
+        </div>
+        <div class="stat-card expense">
+          <div class="stat-label">本月支出</div>
+          <div class="stat-value" id="statExpense">$0</div>
+          <div class="stat-sub">房租、材料等</div>
+        </div>
+        <div class="stat-card profit">
+          <div class="stat-label">本月淨利</div>
+          <div class="stat-value profit" id="statProfit">$0</div>
+          <div class="stat-sub">營收 - 支出</div>
+        </div>
+      </div>
+
+      <!-- 全年營收 vs 支出 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📊 全年營收 vs 支出</span>
+        </div>
+        <div class="chart-wrap tall">
+          <canvas id="monthlyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 服務項目佔比 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">🍩 本月服務佔比</span>
+        </div>
+        <div id="servicePieEmpty" class="no-data" style="display:none">本月尚無服務紀錄</div>
+        <div class="chart-wrap" style="display:none">
+          <canvas id="servicePieChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 低庫存警示 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">⚠️ 庫存警示</span>
+        </div>
+        <div id="lowStockList"><div class="no-data">載入中…</div></div>
+      </div>
+
+    </section>
+
+    <!-- ────────────────────────────────────────────────────
+         服務紀錄
+    ──────────────────────────────────────────────────── -->
+    <section id="view-services" class="view">
+
+      <div class="section-title">
+        服務紀錄
+        <span class="badge" id="svcMonthSummary">載入中…</span>
+      </div>
+
+      <div id="serviceList"><div class="no-data">載入中…</div></div>
+
+    </section>
+
+    <!-- ────────────────────────────────────────────────────
+         庫存管理
+    ──────────────────────────────────────────────────── -->
+    <section id="view-inventory" class="view">
+
+      <div class="section-title">庫存管理</div>
+      <div id="inventoryList"><div class="no-data">載入中…</div></div>
+
+    </section>
+
+    <!-- ────────────────────────────────────────────────────
+         支出管理
+    ──────────────────────────────────────────────────── -->
+    <section id="view-expenses" class="view">
+
+      <div class="section-title">
+        支出管理
+        <span class="badge" id="expMonthSummary">載入中…</span>
+      </div>
+
+      <div id="expenseList"><div class="no-data">載入中…</div></div>
+
+    </section>
+
+    <!-- ────────────────────────────────────────────────────
+         設定
+    ──────────────────────────────────────────────────── -->
+    <section id="view-settings" class="view">
+
+      <!-- GAS 連線設定 -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">🔗 API 連線</span></div>
+        <div class="form-group">
+          <label class="form-label">GAS 部署網址</label>
+          <input id="gasUrlInput" class="form-control" type="url" placeholder="https://script.google.com/macros/s/...">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveGasUrl()">儲存並重新初始化</button>
+      </div>
+
+      <!-- 服務項目 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">💆 服務項目</span>
+          <button class="btn btn-primary btn-sm" onclick="showAddServiceTypeModal()">+ 新增</button>
+        </div>
+        <div id="serviceTypesList"><div class="no-data">載入中…</div></div>
+      </div>
+
+      <!-- 支出項目 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">💰 支出項目</span>
+          <button class="btn btn-primary btn-sm" onclick="showAddExpenseCategoryModal()">+ 新增</button>
+        </div>
+        <div id="expCategoriesList"><div class="no-data">載入中…</div></div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Bottom Navigation -->
+  <nav class="app-nav">
+    <button class="nav-item active" data-view="dashboard" onclick="showView('dashboard')">
+      <span class="nav-icon">📊</span>首頁
+    </button>
+    <button class="nav-item" data-view="services" onclick="showView('services')">
+      <span class="nav-icon">💆</span>服務
+    </button>
+    <button class="nav-item" data-view="inventory" onclick="showView('inventory')">
+      <span class="nav-icon">📦</span>庫存
+    </button>
+    <button class="nav-item" data-view="expenses" onclick="showView('expenses')">
+      <span class="nav-icon">💸</span>支出
+    </button>
+    <button class="nav-item" data-view="settings" onclick="showView('settings')">
+      <span class="nav-icon">⚙️</span>設定
+    </button>
+  </nav>
+
+  <!-- FAB（依頁面顯示不同的新增按鈕） -->
+  <button class="fab" id="fabBtn" onclick="handleFab()">＋</button>
+
+</div><!-- /appShell -->
+
+<!-- ════════════════════════════════════════════════════════
+     Modals
+═════════════════════════════════════════════════════════ -->
+
+<!-- 新增服務紀錄 -->
+<div id="modalAddService" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">💆 新增服務紀錄</div>
+      <button class="modal-close" onclick="closeModal('modalAddService')">✕</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">日期</label>
+        <input id="svcDate" class="form-control" type="date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">客戶類型</label>
+        <select id="svcClientType" class="form-control">
+          <option value="新客">新客</option>
+          <option value="回頭客">回頭客</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">客戶姓名 *</label>
+        <input id="svcClientName" class="form-control" type="text" placeholder="例：小美">
+      </div>
+      <div class="form-group">
+        <label class="form-label">電話（可輸入自動識別）</label>
+        <input id="svcClientPhone" class="form-control" type="tel" placeholder="0912-345-678">
+        <div class="form-hint">輸入電話後離開欄位可自動辨識舊客</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">服務項目 *</label>
+      <select id="svcType" class="form-control"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">金額 *</label>
+      <input id="svcAmount" class="form-control" type="number" placeholder="1200" min="0">
+    </div>
+    <div class="form-group">
+      <label class="form-label">備註</label>
+      <input id="svcNotes" class="form-control" type="text" placeholder="例：加強下眼線">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalAddService')">取消</button>
+      <button class="btn btn-primary" onclick="submitAddService()">✓ 儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新增庫存商品 -->
+<div id="modalAddInventory" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">📦 新增庫存商品</div>
+      <button class="modal-close" onclick="closeModal('modalAddInventory')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">品名 *</label>
+      <input id="invName" class="form-control" type="text" placeholder="例：保濕精華">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">類別</label>
+        <select id="invCategory" class="form-control">
+          <option>保養品</option><option>彩妝</option>
+          <option>睫毛材料</option><option>工具</option><option>其他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">單位</label>
+        <input id="invUnit" class="form-control" type="text" placeholder="個 / 瓶 / 組">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">目前庫存</label>
+        <input id="invStock" class="form-control" type="number" placeholder="0" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">安全庫存量</label>
+        <input id="invSafety" class="form-control" type="number" placeholder="3" min="0">
+        <div class="form-hint">低於此數量會顯示警示</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">供貨來源</label>
+      <input id="invSupplier" class="form-control" type="text" placeholder="例：某某美材行">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalAddInventory')">取消</button>
+      <button class="btn btn-primary" onclick="submitAddInventory()">✓ 儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 進貨紀錄 -->
+<div id="modalAddPurchase" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">🛒 新增進貨</div>
+      <button class="modal-close" onclick="closeModal('modalAddPurchase')">✕</button>
+    </div>
+    <input id="purInventoryId" type="hidden">
+    <div class="form-group">
+      <label class="form-label">品名</label>
+      <input id="purItemName" class="form-control" type="text" readonly>
+    </div>
+    <div class="form-group">
+      <label class="form-label">進貨日期</label>
+      <input id="purDate" class="form-control" type="date">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">進貨數量 *</label>
+        <input id="purQty" class="form-control" type="number" placeholder="10" min="1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">進貨單價 *</label>
+        <input id="purPrice" class="form-control" type="number" placeholder="250" min="0">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">供貨來源</label>
+      <input id="purSupplier" class="form-control" type="text" placeholder="例：蝦皮、供應商名稱">
+    </div>
+    <div style="background:var(--pink-light);border-radius:8px;padding:10px 14px;margin-bottom:4px;font-weight:600;color:var(--pink-dark)">
+      總成本：<span id="purTotal">$0</span>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalAddPurchase')">取消</button>
+      <button class="btn btn-primary" onclick="submitAddPurchase()">✓ 儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新增支出 -->
+<div id="modalAddExpense" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">💸 新增支出</div>
+      <button class="modal-close" onclick="closeModal('modalAddExpense')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">日期</label>
+      <input id="expDate" class="form-control" type="date">
+    </div>
+    <div class="form-group">
+      <label class="form-label">支出項目 *</label>
+      <select id="expCategory" class="form-control"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">金額 *</label>
+      <input id="expAmount" class="form-control" type="number" placeholder="5000" min="0">
+    </div>
+    <div class="form-group">
+      <label class="form-label">備註</label>
+      <input id="expNotes" class="form-control" type="text" placeholder="例：3月份房租">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalAddExpense')">取消</button>
+      <button class="btn btn-primary" onclick="submitAddExpense()">✓ 儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新增服務項目 (設定) -->
+<div id="modalAddServiceType" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">➕ 新增服務項目</div>
+      <button class="modal-close" onclick="closeModal('modalAddServiceType')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">服務名稱 *</label>
+      <input id="newTypeName" class="form-control" type="text" placeholder="例：韓式霧眉">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">預設價格</label>
+        <input id="newTypePrice" class="form-control" type="number" placeholder="1500" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">類別</label>
+        <select id="newTypeCategory" class="form-control">
+          <option>睫毛</option><option>美容</option>
+          <option>美甲</option><option>美體</option><option>其他</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalAddServiceType')">取消</button>
+      <button class="btn btn-primary" onclick="submitAddServiceType()">✓ 儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新增支出項目 (設定) -->
+<div id="modalAddExpenseCat" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">➕ 新增支出項目</div>
+      <button class="modal-close" onclick="closeModal('modalAddExpenseCat')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">名稱 *</label>
+      <input id="newCatName" class="form-control" type="text" placeholder="例：廣告費">
+    </div>
+    <div class="form-group">
+      <label class="form-label">類型</label>
+      <select id="newCatType" class="form-control">
+        <option value="固定">固定支出（每月固定金額）</option>
+        <option value="變動">變動支出（不定期）</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modalAddExpenseCat')">取消</button>
+      <button class="btn btn-primary" onclick="submitAddExpenseCat()">✓ 儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast 容器 -->
+<div id="toastContainer" class="toast-container"></div>
+
+<!-- 載入遮罩 -->
+<div id="loadingOverlay" class="loading-overlay">
+  <div class="spinner"></div>
+</div>
+
+<!-- Scripts -->
+<script src="js/api.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+
+<script>
+  // FAB 依目前頁面觸發不同 modal
+  function handleFab() {
+    switch (state.view) {
+      case 'services':  showAddServiceModal();   break;
+      case 'inventory': showAddInventoryModal();  break;
+      case 'expenses':  showAddExpenseModal();    break;
+      default: break;
+    }
+  }
+
+  // 非儀表板與設定頁才顯示 FAB
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.view;
+      const fab = document.getElementById('fabBtn');
+      fab.style.display = ['services','inventory','expenses'].includes(v) ? 'flex' : 'none';
+    });
+  });
+</script>
+
+</body>
+</html>
