@@ -400,10 +400,29 @@
     </div>
     <div class="form-group">
       <label class="form-label">類型</label>
-      <select id="newCatType" class="form-control">
+      <select id="newCatType" class="form-control" onchange="onExpCatTypeChange()">
         <option value="固定">固定支出（每月固定金額）</option>
         <option value="變動">變動支出（不定期）</option>
       </select>
+    </div>
+    <div id="recurringSection">
+      <label style="display:flex;align-items:center;gap:8px;padding:10px 0 4px;cursor:pointer;font-size:14px;color:var(--text-main)">
+        <input type="checkbox" id="newCatRecurring" onchange="onRecurringCheck()" style="width:18px;height:18px;accent-color:var(--pink)">
+        每月自動記入一筆
+      </label>
+      <div id="recurringFields" style="display:none">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">固定金額</label>
+            <input id="newCatAmount" class="form-control" type="number" placeholder="20000" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">每月幾號記入</label>
+            <input id="newCatDay" class="form-control" type="number" value="1" min="1" max="28">
+            <div class="form-hint">超過當月天數自動調整</div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modalAddExpenseCat')">取消</button>

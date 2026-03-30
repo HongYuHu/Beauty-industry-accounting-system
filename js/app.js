@@ -675,17 +675,24 @@ function renderServiceTypes() {
 }
 
 function renderExpenseCategories() {
+  const recurring = getRecurringExpenses();
   const el = document.getElementById('expCategoriesList');
   el.innerHTML = state.expenseCategories.length === 0
     ? '<div class="no-data">尚無支出項目</div>'
-    : state.expenseCategories.map(c => `
+    : state.expenseCategories.map(c => {
+      const rec = recurring.find(r => r.catName === c['名稱']);
+      const recTag = rec
+        ? `<span class="tag fixed" style="margin-left:4px">每月${rec.day}號 ${fmt.money(rec.amount)}</span>`
+        : '';
+      return `
       <div class="setting-item">
         <div>
           <div class="setting-item-name">${c['名稱']}</div>
-          <div class="setting-item-sub"><span class="tag ${c['類型'] === '固定' ? 'fixed' : 'variable'}">${c['類型']}</span></div>
+          <div class="setting-item-sub"><span class="tag ${c['類型'] === '固定' ? 'fixed' : 'variable'}">${c['類型']}</span>${recTag}</div>
         </div>
         <button class="btn btn-danger btn-sm" onclick="deleteExpenseCategory('${c['ID']}')">刪除</button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 }
 
 // ── 服務項目 ─────────────────────────────────────────────────
@@ -739,10 +746,85 @@ async function deleteServiceType(id) {
   }
 }
 
+// ── 每月自動記入（localStorage） ────────────────────────────
+function getRecurringExpenses() {
+  return JSON.parse(localStorage.getItem('recurringExpenses') || '[]');
+}
+function saveRecurringExpenses(list) {
+  localStorage.setItem('recurringExpenses', JSON.stringify(list));
+}
+
+/** 每次進入 App 時，若本月尚未自動記入，自動加入固定支出 */
+async function autoAddRecurringExpenses() {
+  const today = new Date();
+  // 只對當前月份執行
+  if (state.year !== today.getFullYear() || state.month !== today.getMonth() + 1) return;
+
+  const ym = `${state.year}-${String(state.month).padStart(2, '0')}`;
+  const applied = JSON.parse(localStorage.getItem('recurringApplied') || '{}');
+  if (applied[ym]) return;
+
+  const recurring = getRecurringExpenses();
+  if (recurring.length === 0) return;
+
+  let added = 0;
+  for (const r of recurring) {
+    // 若本月已有同項目，跳過
+    const exists = state.expenseRecords.some(e => e['支出項目'] === r.catName);
+    if (exists) continue;
+
+    const daysInMonth = new Date(state.year, state.month, 0).getDate();
+    const day = Math.min(r.day, daysInMonth);
+    const dateStr = `${ym}-${String(day).padStart(2, '0')}`;
+    const data = { date: dateStr, category: r.catName, amount: r.amount, notes: '每月自動記入' };
+
+    const tid = tempId();
+    state.expenseRecords.push({
+      'ID': tid, '日期': dateStr, '支出項目': r.catName,
+      '金額': Number(r.amount), '備註': '每月自動記入',
+    });
+    try {
+      const res = await API.addExpense(data);
+      const idx = state.expenseRecords.findIndex(e => e['ID'] === tid);
+      if (idx !== -1) state.expenseRecords[idx]['ID'] = res.id;
+      added++;
+    } catch {
+      state.expenseRecords = state.expenseRecords.filter(e => e['ID'] !== tid);
+    }
+  }
+
+  applied[ym] = true;
+  localStorage.setItem('recurringApplied', JSON.stringify(applied));
+  if (added > 0) {
+    renderExpenseList();
+    bgRefreshStats();
+    toast(`已自動記入 ${added} 筆固定支出`, 'success');
+  }
+}
+
 // ── 支出項目 ─────────────────────────────────────────────────
+function onExpCatTypeChange() {
+  const isFixed = document.getElementById('newCatType').value === '固定';
+  document.getElementById('recurringSection').style.display = isFixed ? '' : 'none';
+  if (!isFixed) {
+    document.getElementById('newCatRecurring').checked = false;
+    document.getElementById('recurringFields').style.display = 'none';
+  }
+}
+
+function onRecurringCheck() {
+  const checked = document.getElementById('newCatRecurring').checked;
+  document.getElementById('recurringFields').style.display = checked ? '' : 'none';
+}
+
 function showAddExpenseCategoryModal() {
-  document.getElementById('newCatName').value = '';
-  document.getElementById('newCatType').value = '固定';
+  document.getElementById('newCatName').value      = '';
+  document.getElementById('newCatType').value      = '固定';
+  document.getElementById('newCatRecurring').checked = false;
+  document.getElementById('newCatAmount').value    = '';
+  document.getElementById('newCatDay').value       = '1';
+  document.getElementById('recurringSection').style.display = '';
+  document.getElementById('recurringFields').style.display  = 'none';
   openModal('modalAddExpenseCat');
 }
 
@@ -752,6 +834,17 @@ async function submitAddExpenseCat() {
     type: document.getElementById('newCatType').value,
   };
   if (!data.name) { toast('請填寫名稱', 'error'); return; }
+
+  // 儲存每月自動記入設定
+  const recurring = getRecurringExpenses();
+  const isRecurring = data.type === '固定' && document.getElementById('newCatRecurring').checked;
+  if (isRecurring) {
+    const amount = Number(document.getElementById('newCatAmount').value);
+    const day    = Number(document.getElementById('newCatDay').value) || 1;
+    if (!amount) { toast('請填寫固定金額', 'error'); return; }
+    recurring.push({ catName: data.name, amount, day });
+    saveRecurringExpenses(recurring);
+  }
 
   const tid = tempId();
   state.expenseCategories.push({ 'ID': tid, '名稱': data.name, '類型': data.type });
@@ -765,6 +858,8 @@ async function submitAddExpenseCat() {
     if (idx !== -1) state.expenseCategories[idx]['ID'] = res.id;
   } catch (e) {
     state.expenseCategories = state.expenseCategories.filter(c => c['ID'] !== tid);
+    // 同步失敗也移除 recurring 設定
+    if (isRecurring) saveRecurringExpenses(recurring.filter(r => r.catName !== data.name));
     renderExpenseCategories();
     toast('同步失敗，已回滾：' + e.message, 'error');
   }
@@ -773,10 +868,14 @@ async function submitAddExpenseCat() {
 async function deleteExpenseCategory(id) {
   if (!confirm('確定刪除此支出項目？')) return;
 
+  const cat = state.expenseCategories.find(c => String(c['ID']) === String(id));
   const backup = [...state.expenseCategories];
   state.expenseCategories = state.expenseCategories.filter(c => String(c['ID']) !== String(id));
   renderExpenseCategories();
   toast('已刪除');
+
+  // 同步移除 recurring 設定
+  if (cat) saveRecurringExpenses(getRecurringExpenses().filter(r => r.catName !== cat['名稱']));
 
   try { await API.deleteExpenseCategory(id); }
   catch (e) {
@@ -808,6 +907,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     await loadAll();
     showView('dashboard');
+    autoAddRecurringExpenses();
   } catch (e) {
     handleApiError(e);
     showView('dashboard');
