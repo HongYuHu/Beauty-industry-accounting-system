@@ -4,7 +4,7 @@
 
 const API = {
   // 固定的 GAS 部署網址
-  url: 'https://script.google.com/macros/s/AKfycbwVe5fkhC6Lpcz4vTsgdyW8vyiEdMQvcHDsu_0VNWMHBA0pbHKPuZYJR66Pnnmzb08/exec',
+  url: 'https://script.google.com/macros/s/AKfycbzcjNdsW2EviG9IxsL6kzCou52JggeiEHs1xR1uHFcSyaWFbgDqvaMj7IzWBm9qNL4/exec',
 
   /** GET 請求 */
   async get(action, params = {}) {
