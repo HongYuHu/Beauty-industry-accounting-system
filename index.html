@@ -81,10 +81,19 @@
         <div class="card-header">
           <span class="card-title">🍩 本月服務佔比</span>
         </div>
-        <div id="servicePieEmpty" class="no-data" style="display:none">本月尚無服務紀錄</div>
-        <div class="chart-wrap" style="display:none">
+        <div id="servicePieEmpty" class="no-data">本月尚無服務紀錄</div>
+        <div id="servicePieWrap" class="chart-wrap" style="display:none">
           <canvas id="servicePieChart"></canvas>
         </div>
+      </div>
+
+      <!-- 本月來客日曆 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📅 本月來客日曆</span>
+          <span class="card-title" style="font-size:12px;color:var(--text-light)" id="calendarMonthLabel"></span>
+        </div>
+        <div id="miniCalendar" class="mini-calendar"></div>
       </div>
 
       <!-- 低庫存警示 -->

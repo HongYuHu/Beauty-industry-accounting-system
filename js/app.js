@@ -143,16 +143,24 @@ function renderDashboard(s) {
 
   Charts.renderMonthly(s.monthlyRevenue || Array(12).fill(0), s.monthlyExpenses || Array(12).fill(0));
 
+  // ★ 圓餅圖：顯示/隱藏父層 wrap（不是 canvas）
   const bd   = s.serviceBreakdown || {};
   const keys = Object.keys(bd);
-  if (keys.length) {
-    Charts.renderServicePie(keys, keys.map(k => bd[k].count));
-    document.getElementById('servicePieEmpty').style.display = 'none';
-    document.getElementById('servicePieChart').style.display = 'block';
-  } else {
-    document.getElementById('servicePieEmpty').style.display = 'block';
-    document.getElementById('servicePieChart').style.display = 'none';
+  const pieWrap  = document.getElementById('servicePieWrap');
+  const pieEmpty = document.getElementById('servicePieEmpty');
+  if (pieWrap && pieEmpty) {
+    if (keys.length) {
+      Charts.renderServicePie(keys, keys.map(k => bd[k].count));
+      pieEmpty.style.display = 'none';
+      pieWrap.style.display  = 'block';
+    } else {
+      pieEmpty.style.display = 'block';
+      pieWrap.style.display  = 'none';
+    }
   }
+
+  // ★ 迷你日曆
+  renderMiniCalendar();
 
   const low = s.lowInventory || [];
   const el  = document.getElementById('lowStockList');
@@ -167,6 +175,58 @@ function renderDashboard(s) {
         </div>
         <div class="item-right"><span class="low-stock-chip">剩 ${i['目前庫存']} ${i['單位']}</span></div>
       </div>`).join('');
+}
+
+// ── 迷你日曆（從服務紀錄的日期算出每天來客數） ─────────────
+function renderMiniCalendar() {
+  const container = document.getElementById('miniCalendar');
+  const label     = document.getElementById('calendarMonthLabel');
+  if (!container) return;
+
+  const y = state.year;
+  const m = state.month; // 1-based
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const firstDay    = new Date(y, m - 1, 1).getDay(); // 0=Sun
+  const today       = new Date();
+  const isCurrentMonth = (today.getFullYear() === y && today.getMonth() + 1 === m);
+
+  if (label) label.textContent = `${y}/${String(m).padStart(2, '0')}`;
+
+  // 統計每日來客數
+  const dayCounts = {};
+  (state.serviceRecords || []).forEach(r => {
+    if (!r['日期']) return;
+    const d = new Date(r['日期']);
+    if (d.getFullYear() === y && d.getMonth() + 1 === m) {
+      const day = d.getDate();
+      dayCounts[day] = (dayCounts[day] || 0) + 1;
+    }
+  });
+
+  // 星期標題
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  let html = weekdays.map(w => `<div class="cal-header">${w}</div>`).join('');
+
+  // 空白格（月初偏移）
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="cal-day empty"></div>';
+  }
+
+  // 每一天
+  for (let d = 1; d <= daysInMonth; d++) {
+    const count    = dayCounts[d] || 0;
+    const isToday  = isCurrentMonth && d === today.getDate();
+    const cls      = ['cal-day'];
+    if (isToday)    cls.push('today');
+    if (count > 0)  cls.push('has-clients');
+
+    html += `<div class="${cls.join(' ')}">
+      ${d}
+      ${count > 0 ? `<span class="cal-dot">${count}</span>` : ''}
+    </div>`;
+  }
+
+  container.innerHTML = html;
 }
 
 // ════════════════════════════════════════════════════════════
